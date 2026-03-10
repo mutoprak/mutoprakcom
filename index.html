@@ -1,85 +1,497 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Murat Toprak</title>
-  <link rel="stylesheet" href="style.css" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500&family=Playfair+Display:ital@0;1&display=swap" rel="stylesheet" />
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MUTOPRAK - The Labyrinth</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    font-family: 'Courier New', monospace;
+    overflow: hidden;
+  }
+
+  h1 {
+    color: #FFD700;
+    font-size: 2rem;
+    letter-spacing: 0.4em;
+    text-shadow: 0 0 20px #FFD700, 0 0 40px #FF8C00;
+    margin-bottom: 12px;
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+  }
+
+  #canvas-wrap {
+    position: relative;
+    border: 2px solid #1a1aff;
+    box-shadow: 0 0 30px #1a1aff, 0 0 60px #0000aa inset;
+    transition: border-color 0s, box-shadow 0s;
+  }
+
+  canvas { display: block; background: #000; }
+
+  #score-bar {
+    display: flex;
+    gap: 40px;
+    color: #FFD700;
+    font-size: 1rem;
+    letter-spacing: 0.15em;
+    margin-top: 10px;
+  }
+
+  #score-bar span { text-shadow: 0 0 8px #FFD700; }
+</style>
 </head>
 <body>
-  <main>
-    <section class="hero">
-      <div class="hero-inner">
-        <p class="location">Berlin, Germany</p>
-        <h1>Murat Toprak</h1>
-        <p class="tagline">Engineering Lead</p>
-        <p class="bio">
-          Pragmatic engineering leader with 13+ years of experience in software
-          product delivery. Passionate about building great teams and shipping
-          meaningful software.
-        </p>
-        <nav class="links">
-          <a href="https://linkedin.com/in/murat-toprak" target="_blank" rel="noopener noreferrer" class="link-item">
-            <span class="link-label">LinkedIn</span>
-            <span class="link-arrow">↗</span>
-          </a>
-          <a href="https://github.com/mutoprak" target="_blank" rel="noopener noreferrer" class="link-item">
-            <span class="link-label">GitHub</span>
-            <span class="link-arrow">↗</span>
-          </a>
-        </nav>
-      </div>
-    </section>
 
-    <section class="section">
-      <h2>Projects</h2>
-      <div class="project-list">
-        <a href="https://github.com/mutoprak/eddies-ubahn-game" target="_blank" rel="noopener noreferrer" class="project-item">
-          <div class="project-info">
-            <h3>Berlin U-Bahn Game</h3>
-            <p>A browser-based game built around Berlin's rail transportation network. Find the fastest route between stations.</p>
-          </div>
-          <span class="project-arrow">↗</span>
-        </a>
-      </div>
-    </section>
+<h1>M·U·T·O·P·R·A·K</h1>
+<div id="canvas-wrap">
+  <canvas id="c"></canvas>
+</div>
+<div id="score-bar">
+  <span>CREATURES: <b id="alive">8</b></span>
+  <span>DOTS EATEN: <b id="dots">0</b></span>
+  <span>LAPS: <b id="laps">0</b></span>
+</div>
 
-    <section class="section">
-      <h2>Experience</h2>
-      <div class="experience-list">
-        <div class="experience-item">
-          <div class="experience-meta">
-            <span class="experience-company">Labforward</span>
-            <span class="experience-period">2018 — Present</span>
-          </div>
-          <p class="experience-role">Engineering Lead</p>
-          <p class="experience-desc">Led engineering teams in building laboratory informatics software. Progressed from Backend Engineer to Engineering Lead, mentoring developers and driving technical strategy.</p>
-        </div>
-      </div>
-    </section>
+<script>
+// ─── CONFIG ──────────────────────────────────────────────────────────────────
+const CELL  = 24;
+const SPEED = 1.8;
+const ROWS  = 21;
+const COLS  = 25;
+const W     = COLS * CELL;
+const H     = ROWS * CELL;
 
-    <section class="section">
-      <h2>Education</h2>
-      <div class="experience-list">
-        <div class="experience-item">
-          <div class="experience-meta">
-            <span class="experience-company">Middle East Technical University</span>
-          </div>
-          <p class="experience-role">Computer Engineering</p>
-        </div>
-      </div>
-    </section>
+// ─── COLOR THEMES ─────────────────────────────────────────────────────────────
+const THEMES = [
+  { wall: '#00008B', hi: '#1a1aff',  border: '#1a1aff',  glow: '#0000aa' },
+  { wall: '#3B0060', hi: '#9B30FF',  border: '#9B30FF',  glow: '#3B0060' },
+  { wall: '#004D4D', hi: '#00CCCC',  border: '#00CCCC',  glow: '#003333' },
+  { wall: '#5C1A00', hi: '#DD4400',  border: '#DD4400',  glow: '#3A1000' },
+  { wall: '#003300', hi: '#00BB44',  border: '#00BB44',  glow: '#001a00' },
+  { wall: '#1a1a00', hi: '#BBAA00',  border: '#BBAA00',  glow: '#111100' },
+  { wall: '#1a0030', hi: '#FF00FF',  border: '#EE00DD',  glow: '#110022' },
+  { wall: '#002233', hi: '#0099DD',  border: '#0099DD',  glow: '#001122' },
+];
+const THEME = THEMES[Math.floor(Math.random() * THEMES.length)];
 
-    <footer>
-      <p>© <span id="year"></span> Murat Toprak</p>
-    </footer>
-  </main>
+// Apply theme to border
+const wrap = document.getElementById('canvas-wrap');
+wrap.style.borderColor = THEME.border;
+wrap.style.boxShadow   = `0 0 30px ${THEME.border}, 0 0 60px ${THEME.glow} inset`;
 
-  <script>
-    document.getElementById('year').textContent = new Date().getFullYear();
-  </script>
+// ─── MAZE GENERATION (recursive backtracker) ──────────────────────────────────
+function generateMaze(rows, cols) {
+  const map = Array.from({ length: rows }, () => Array(cols).fill(1));
+  const roomRows = Math.floor(rows / 2);
+  const roomCols = Math.floor(cols / 2);
+  const visited  = Array.from({ length: roomRows }, () => Array(roomCols).fill(false));
+
+  function carve(rr, rc) {
+    visited[rr][rc] = true;
+    map[rr * 2 + 1][rc * 2 + 1] = 0;
+    const dirs = [{ dr: -1, dc: 0 }, { dr: 1, dc: 0 }, { dr: 0, dc: -1 }, { dr: 0, dc: 1 }];
+    // Fisher-Yates shuffle
+    for (let i = dirs.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [dirs[i], dirs[j]] = [dirs[j], dirs[i]];
+    }
+    for (const { dr, dc } of dirs) {
+      const nr = rr + dr, nc = rc + dc;
+      if (nr >= 0 && nr < roomRows && nc >= 0 && nc < roomCols && !visited[nr][nc]) {
+        map[rr * 2 + 1 + dr][rc * 2 + 1 + dc] = 0;
+        carve(nr, nc);
+      }
+    }
+  }
+  carve(0, 0);
+
+  // Add ~15% extra openings to create loops and breathing room
+  let extras = Math.floor(roomRows * roomCols * 0.15);
+  for (let i = 0; i < 2000 && extras > 0; i++) {
+    const r = 1 + Math.floor(Math.random() * (rows - 2));
+    const c = 1 + Math.floor(Math.random() * (cols - 2));
+    if (map[r][c] !== 1) continue;
+    const nbPaths = [[r-1,c],[r+1,c],[r,c-1],[r,c+1]]
+      .filter(([nr,nc]) => nr>=0&&nr<rows&&nc>=0&&nc<cols&&map[nr][nc]===0).length;
+    if (nbPaths >= 2) { map[r][c] = 0; extras--; }
+  }
+
+  return map;
+}
+
+const MAP = generateMaze(ROWS, COLS);
+
+const canvas = document.getElementById('c');
+canvas.width  = W;
+canvas.height = H;
+const ctx = canvas.getContext('2d');
+
+// ─── DOTS ────────────────────────────────────────────────────────────────────
+const dots = [];
+let dotsEaten = 0;
+
+function initDots() {
+  dots.length = 0;
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (MAP[r][c] === 0) {
+        dots.push({ r, c, eaten: false, power: false });
+      }
+    }
+  }
+  // Power pellets: one from each quadrant
+  const quadrants = [
+    dots.filter(d => d.r <  ROWS/2 && d.c <  COLS/2),
+    dots.filter(d => d.r <  ROWS/2 && d.c >= COLS/2),
+    dots.filter(d => d.r >= ROWS/2 && d.c <  COLS/2),
+    dots.filter(d => d.r >= ROWS/2 && d.c >= COLS/2),
+  ];
+  quadrants.forEach(q => {
+    if (q.length) q[Math.floor(Math.random() * q.length)].power = true;
+  });
+}
+
+// ─── PATHFINDING HELPERS ─────────────────────────────────────────────────────
+const DIRS = [
+  { dx: 0,  dy: -1, name: 'up'    },
+  { dx: 0,  dy:  1, name: 'down'  },
+  { dx: -1, dy:  0, name: 'left'  },
+  { dx:  1, dy:  0, name: 'right' },
+];
+
+function isWalkable(c, r) {
+  if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return false;
+  return MAP[r][c] === 0;
+}
+
+function cellCenter(c, r) {
+  return { x: c * CELL + CELL / 2, y: r * CELL + CELL / 2 };
+}
+
+// BFS to find next direction toward target cell
+function bfsDir(fromC, fromR, toC, toR, bannedDir) {
+  if (fromC === toC && fromR === toR) return null;
+  const visited = Array.from({ length: ROWS }, () => Array(COLS).fill(false));
+  visited[fromR][fromC] = true;
+  const queue = [{ c: fromC, r: fromR, firstDir: null }];
+  while (queue.length) {
+    const { c, r, firstDir } = queue.shift();
+    for (const d of DIRS) {
+      if (firstDir === null && d.name === bannedDir) continue;
+      const nc = c + d.dx;
+      const nr = r + d.dy;
+      if (!isWalkable(nc, nr) || visited[nr][nc]) continue;
+      visited[nr][nc] = true;
+      const fd = firstDir ?? d;
+      if (nc === toC && nr === toR) return fd;
+      queue.push({ c: nc, r: nr, firstDir: fd });
+    }
+  }
+  return null;
+}
+
+// ─── CREATURE CLASS ───────────────────────────────────────────────────────────
+const LETTERS  = ['m','u','t','o','p','r','a','k'];
+const CREATURE_COLORS = [
+  '#FF4444','#44AAFF','#FF88AA','#FFB344',
+  '#44FF88','#FF44FF','#44FFFF','#FFFFFF',
+];
+
+// Spawn positions: pick 8 walkable cells, 2 from each quadrant
+function buildSpawns() {
+  const q = [[], [], [], []];
+  for (let r = 1; r < ROWS - 1; r++) {
+    for (let c = 1; c < COLS - 1; c++) {
+      if (MAP[r][c] === 0) {
+        const qi = (r < ROWS / 2 ? 0 : 2) + (c < COLS / 2 ? 0 : 1);
+        q[qi].push([r, c]);
+      }
+    }
+  }
+  const spawns = [];
+  q.forEach(cells => {
+    for (let i = cells.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [cells[i], cells[j]] = [cells[j], cells[i]];
+    }
+    spawns.push(cells[0], cells[1] ?? cells[0]);
+  });
+  return spawns;
+}
+const SPAWNS = buildSpawns();
+
+class Creature {
+  constructor(idx) {
+    this.idx    = idx;
+    this.letter = LETTERS[idx];
+    this.color  = CREATURE_COLORS[idx];
+    this.size   = CELL * 0.72;
+
+    // Behavior personality
+    this.personality = ['wander','chase','flee','patrol'][idx % 4];
+    this.laps   = 0;
+
+    this.reset();
+  }
+
+  reset() {
+    const [r, c] = SPAWNS[this.idx % SPAWNS.length];
+    const cc = cellCenter(c, r);
+    this.x   = cc.x;
+    this.y   = cc.y;
+    this.col = c;
+    this.row = r;
+    this.targetCol = c;
+    this.targetRow = r;
+    this.dir = DIRS[Math.floor(Math.random() * 4)];
+    this.scared    = false;
+    this.scaredTimer = 0;
+    this.pickNewTarget();
+  }
+
+  pickNewTarget() {
+    // Pick a random reachable open cell
+    let attempts = 0;
+    while (attempts++ < 200) {
+      const rc = Math.floor(Math.random() * ROWS);
+      const cc = Math.floor(Math.random() * COLS);
+      if (isWalkable(cc, rc) && (rc !== this.row || cc !== this.col)) {
+        this.targetCol = cc;
+        this.targetRow = rc;
+        return;
+      }
+    }
+  }
+
+  // Opposite direction name
+  static opposite(name) {
+    return { up:'down', down:'up', left:'right', right:'left' }[name];
+  }
+
+  chooseDir() {
+    // Available directions (no reversing unless forced)
+    const available = DIRS.filter(d => {
+      const nc = this.col + d.dx;
+      const nr = this.row + d.dy;
+      return isWalkable(nc, nr);
+    });
+
+    if (available.length === 0) return this.dir;
+
+    const forward = available.filter(d => d.name !== Creature.opposite(this.dir.name));
+    const options = forward.length > 0 ? forward : available;
+
+    // Scared: run away from target (farthest direction)
+    if (this.scared) {
+      // Move away from target
+      const tc = cellCenter(this.targetCol, this.targetRow);
+      let best = null, bestDist = -Infinity;
+      options.forEach(d => {
+        const nc = this.col + d.dx;
+        const nr = this.row + d.dy;
+        const cp = cellCenter(nc, nr);
+        const dist = Math.hypot(cp.x - tc.x, cp.y - tc.y);
+        if (dist > bestDist) { bestDist = dist; best = d; }
+      });
+      return best ?? options[0];
+    }
+
+    // BFS toward target
+    const bfs = bfsDir(this.col, this.row, this.targetCol, this.targetRow,
+                       Creature.opposite(this.dir.name));
+    if (bfs) {
+      const match = options.find(d => d.name === bfs.name);
+      if (match) return match;
+    }
+
+    // Fallback: random from available (avoid reverse)
+    return options[Math.floor(Math.random() * options.length)];
+  }
+
+  update(others) {
+    // Move toward next cell center
+    const tgt = cellCenter(this.col + this.dir.dx, this.row + this.dir.dy);
+
+    // Check if next cell is walkable; if not, we must be at current center
+    const nextC = this.col + this.dir.dx;
+    const nextR = this.row + this.dir.dy;
+
+    if (!isWalkable(nextC, nextR)) {
+      // Snap to center and replan
+      const cc = cellCenter(this.col, this.row);
+      this.x = cc.x; this.y = cc.y;
+      this.dir = this.chooseDir();
+      return;
+    }
+
+    const dx = tgt.x - this.x;
+    const dy = tgt.y - this.y;
+    const dist = Math.hypot(dx, dy);
+
+    if (dist <= SPEED) {
+      // Arrived at next cell
+      this.x = tgt.x;
+      this.y = tgt.y;
+      this.col = nextC;
+      this.row = nextR;
+
+      // Eat dot
+      const dot = dots.find(d => d.r === this.row && d.c === this.col && !d.eaten);
+      if (dot) {
+        dot.eaten = true;
+        dotsEaten++;
+        document.getElementById('dots').textContent = dotsEaten;
+        if (dot.power) {
+          // Scare all other creatures
+          others.forEach(o => {
+            if (o !== this) { o.scared = true; o.scaredTimer = 300; }
+          });
+        }
+      }
+
+      // Arrived at target?
+      if (this.col === this.targetCol && this.row === this.targetRow) {
+        this.laps++;
+        document.getElementById('laps').textContent =
+          Math.max(...creatures.map(c => c.laps));
+        this.pickNewTarget();
+        // Sometimes change personality target
+        if (Math.random() < 0.3) this.scared = false;
+      }
+
+      this.dir = this.chooseDir();
+    } else {
+      this.x += (dx / dist) * SPEED;
+      this.y += (dy / dist) * SPEED;
+    }
+
+    // Scared timer
+    if (this.scared) {
+      this.scaredTimer--;
+      if (this.scaredTimer <= 0) this.scared = false;
+    }
+  }
+
+  draw() {
+    const fs = this.size;
+    ctx.save();
+    ctx.translate(this.x, this.y);
+
+    // Glow
+    ctx.shadowBlur  = this.scared ? 16 : 10;
+    ctx.shadowColor = this.scared ? '#4444ff' : this.color;
+
+    // Body circle
+    ctx.beginPath();
+    ctx.arc(0, 0, fs * 0.46, 0, Math.PI * 2);
+    ctx.fillStyle = this.scared
+      ? `rgba(60,60,220,${0.5 + 0.5 * Math.sin(Date.now() / 80)})`
+      : this.color + '33';
+    ctx.fill();
+
+    // Border
+    ctx.strokeStyle = this.scared ? '#8888ff' : this.color;
+    ctx.lineWidth   = 1.5;
+    ctx.stroke();
+
+    // Letter
+    ctx.shadowBlur  = 0;
+    ctx.font        = `bold ${Math.round(fs * 0.55)}px 'Courier New', monospace`;
+    ctx.textAlign   = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle   = this.scared ? '#aaaaff' : this.color;
+    ctx.fillText(this.letter.toUpperCase(), 0, 1);
+
+    ctx.restore();
+  }
+}
+
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+initDots();
+const creatures = LETTERS.map((_, i) => new Creature(i));
+
+// ─── DRAW MAZE ────────────────────────────────────────────────────────────────
+function drawMaze() {
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const x = c * CELL;
+      const y = r * CELL;
+      if (MAP[r][c] === 1) {
+        ctx.fillStyle = THEME.wall;
+        ctx.fillRect(x, y, CELL, CELL);
+        ctx.strokeStyle = THEME.hi;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x + 1, y + 1, CELL - 2, CELL - 2);
+      }
+    }
+  }
+}
+
+function drawDots() {
+  dots.forEach(d => {
+    if (d.eaten) return;
+    const cc = cellCenter(d.c, d.r);
+    if (d.power) {
+      // Power pellet
+      const pulse = 0.6 + 0.4 * Math.sin(Date.now() / 200);
+      ctx.beginPath();
+      ctx.arc(cc.x, cc.y, 5 * pulse, 0, Math.PI * 2);
+      ctx.fillStyle = '#FFD700';
+      ctx.shadowBlur = 12;
+      ctx.shadowColor = '#FFD700';
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    } else {
+      ctx.beginPath();
+      ctx.arc(cc.x, cc.y, 2, 0, Math.PI * 2);
+      ctx.fillStyle = '#FFD700aa';
+      ctx.fill();
+    }
+  });
+}
+
+// ─── GAME LOOP ────────────────────────────────────────────────────────────────
+let lastReset = 0;
+
+function loop() {
+  // Clear
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+
+  drawMaze();
+  drawDots();
+
+  // Update & draw creatures
+  creatures.forEach(c => c.update(creatures));
+  creatures.forEach(c => c.draw());
+
+  // If all dots eaten, reinit after short delay
+  if (dots.every(d => d.eaten)) {
+    const now = Date.now();
+    if (now - lastReset > 1500) {
+      lastReset = now;
+      initDots();
+    }
+  }
+
+  requestAnimationFrame(loop);
+}
+
+loop();
+</script>
 </body>
 </html>
