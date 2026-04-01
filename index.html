@@ -1,497 +1,545 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MUTOPRAK - The Labyrinth</title>
+<title>MUTOPRAK - Snake</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
-  body {
-    background: #000;
+  html, body {
+    width: 100%; height: 100%;
+    background: #0a0a0a;
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
-    min-height: 100vh;
+    justify-content: space-between;
     font-family: 'Courier New', monospace;
     overflow: hidden;
   }
 
+  #top-bar {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 10px 16px 0;
+    flex-shrink: 0;
+  }
+
   h1 {
-    color: #FFD700;
-    font-size: 2rem;
+    color: #4bfc68;
+    font-size: clamp(1rem, 3.5vw, 2rem);
     letter-spacing: 0.4em;
-    text-shadow: 0 0 20px #FFD700, 0 0 40px #FF8C00;
-    margin-bottom: 12px;
+    text-shadow: 0 0 20px #4bfc68, 0 0 40px #00aa33;
     animation: pulse 2s ease-in-out infinite;
   }
 
   @keyframes pulse {
     0%, 100% { opacity: 1; }
-    50% { opacity: 0.6; }
+    50%       { opacity: 0.55; }
   }
 
   #canvas-wrap {
-    position: relative;
-    border: 2px solid #1a1aff;
-    box-shadow: 0 0 30px #1a1aff, 0 0 60px #0000aa inset;
-    transition: border-color 0s, box-shadow 0s;
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    padding: 8px;
+    min-height: 0;
   }
 
-  canvas { display: block; background: #000; }
+  #canvas-wrap canvas {
+    display: block;
+    border: 1px solid #1e4d1e;
+    box-shadow:
+      0 0 0 1px #0d2a0d,
+      0 0 30px #4bfc6833,
+      0 0 60px #00ff4118 inset;
+  }
+
+  #bottom-bar {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 16px 10px;
+    flex-shrink: 0;
+  }
 
   #score-bar {
     display: flex;
-    gap: 40px;
-    color: #FFD700;
-    font-size: 1rem;
+    gap: clamp(16px, 4vw, 40px);
+    color: #4bfc68;
+    font-size: clamp(0.65rem, 1.8vw, 0.9rem);
     letter-spacing: 0.15em;
-    margin-top: 10px;
+    text-shadow: 0 0 8px #4bfc68;
   }
+  #score-bar span b { color: #fff; }
 
-  #score-bar span { text-shadow: 0 0 8px #FFD700; }
+  #letters-bar {
+    font-size: clamp(0.8rem, 2.5vw, 1.1rem);
+    letter-spacing: clamp(0.2em, 1vw, 0.45em);
+  }
 </style>
 </head>
 <body>
 
-<h1>M·U·T·O·P·R·A·K</h1>
+<div id="top-bar">
+  <h1>M·U·T·O·P·R·A·K</h1>
+</div>
+
 <div id="canvas-wrap">
   <canvas id="c"></canvas>
 </div>
-<div id="score-bar">
-  <span>CREATURES: <b id="alive">8</b></span>
-  <span>DOTS EATEN: <b id="dots">0</b></span>
-  <span>LAPS: <b id="laps">0</b></span>
+
+<div id="bottom-bar">
+  <div id="score-bar">
+    <span>SCORE: <b id="score">0</b></span>
+    <span>LENGTH: <b id="length">3</b></span>
+    <span>HIGH: <b id="high">0</b></span>
+  </div>
+  <div id="letters-bar">
+    <span id="letters-display"></span>
+  </div>
 </div>
 
 <script>
-// ─── CONFIG ──────────────────────────────────────────────────────────────────
-const CELL  = 24;
-const SPEED = 1.8;
-const ROWS  = 21;
-const COLS  = 25;
-const W     = COLS * CELL;
-const H     = ROWS * CELL;
+// ─── GRID (fixed logical size, CELL is computed) ──────────────────────────────
+const COLS    = 25;
+const ROWS    = 21;
+const TICK_MS = 100;
 
-// ─── COLOR THEMES ─────────────────────────────────────────────────────────────
-const THEMES = [
-  { wall: '#00008B', hi: '#1a1aff',  border: '#1a1aff',  glow: '#0000aa' },
-  { wall: '#3B0060', hi: '#9B30FF',  border: '#9B30FF',  glow: '#3B0060' },
-  { wall: '#004D4D', hi: '#00CCCC',  border: '#00CCCC',  glow: '#003333' },
-  { wall: '#5C1A00', hi: '#DD4400',  border: '#DD4400',  glow: '#3A1000' },
-  { wall: '#003300', hi: '#00BB44',  border: '#00BB44',  glow: '#001a00' },
-  { wall: '#1a1a00', hi: '#BBAA00',  border: '#BBAA00',  glow: '#111100' },
-  { wall: '#1a0030', hi: '#FF00FF',  border: '#EE00DD',  glow: '#110022' },
-  { wall: '#002233', hi: '#0099DD',  border: '#0099DD',  glow: '#001122' },
+let CELL = 20;
+let W    = COLS * CELL;
+let H    = ROWS * CELL;
+
+// ─── PALETTE ─────────────────────────────────────────────────────────────────
+const C_BG     = '#0d1f0d';
+const C_GRID   = '#122012';
+const C_HEAD   = '#6eff88';
+const C_BODY_A = '#3cd458';
+const C_BODY_B = '#2aaa44';
+const C_DEAD   = '#ff4444';
+const C_DEAD_B = '#882222';
+
+const LETTERS     = ['M','U','T','O','P','R','A','K'];
+const FOOD_COLORS = [
+  '#FF4444','#44AAFF','#FF88AA','#FFB344',
+  '#44FF88','#FF44FF','#44FFFF','#FFFFFF',
 ];
-const THEME = THEMES[Math.floor(Math.random() * THEMES.length)];
 
-// Apply theme to border
-const wrap = document.getElementById('canvas-wrap');
-wrap.style.borderColor = THEME.border;
-wrap.style.boxShadow   = `0 0 30px ${THEME.border}, 0 0 60px ${THEME.glow} inset`;
+// ─── CANVAS ───────────────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
 
-// ─── MAZE GENERATION (recursive backtracker) ──────────────────────────────────
-function generateMaze(rows, cols) {
-  const map = Array.from({ length: rows }, () => Array(cols).fill(1));
-  const roomRows = Math.floor(rows / 2);
-  const roomCols = Math.floor(cols / 2);
-  const visited  = Array.from({ length: roomRows }, () => Array(roomCols).fill(false));
-
-  function carve(rr, rc) {
-    visited[rr][rc] = true;
-    map[rr * 2 + 1][rc * 2 + 1] = 0;
-    const dirs = [{ dr: -1, dc: 0 }, { dr: 1, dc: 0 }, { dr: 0, dc: -1 }, { dr: 0, dc: 1 }];
-    // Fisher-Yates shuffle
-    for (let i = dirs.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [dirs[i], dirs[j]] = [dirs[j], dirs[i]];
-    }
-    for (const { dr, dc } of dirs) {
-      const nr = rr + dr, nc = rc + dc;
-      if (nr >= 0 && nr < roomRows && nc >= 0 && nc < roomCols && !visited[nr][nc]) {
-        map[rr * 2 + 1 + dr][rc * 2 + 1 + dc] = 0;
-        carve(nr, nc);
-      }
-    }
-  }
-  carve(0, 0);
-
-  // Add ~15% extra openings to create loops and breathing room
-  let extras = Math.floor(roomRows * roomCols * 0.15);
-  for (let i = 0; i < 2000 && extras > 0; i++) {
-    const r = 1 + Math.floor(Math.random() * (rows - 2));
-    const c = 1 + Math.floor(Math.random() * (cols - 2));
-    if (map[r][c] !== 1) continue;
-    const nbPaths = [[r-1,c],[r+1,c],[r,c-1],[r,c+1]]
-      .filter(([nr,nc]) => nr>=0&&nr<rows&&nc>=0&&nc<cols&&map[nr][nc]===0).length;
-    if (nbPaths >= 2) { map[r][c] = 0; extras--; }
-  }
-
-  return map;
+function applySize() {
+  const wrap   = document.getElementById('canvas-wrap');
+  const availW = wrap.clientWidth  - 16;
+  const availH = wrap.clientHeight - 16;
+  CELL = Math.max(8, Math.floor(Math.min(availW / COLS, availH / ROWS)));
+  W    = CELL * COLS;
+  H    = CELL * ROWS;
+  canvas.width  = W;
+  canvas.height = H;
 }
 
-const MAP = generateMaze(ROWS, COLS);
+// ─── STATE ───────────────────────────────────────────────────────────────────
+let snake          = [];
+let dir            = { x: 1, y: 0 };
+let foods          = [];
+let score          = 0;
+let high           = 0;
+let collected      = [];
+let dead           = false;
+let deadFrames     = 0;
+let celebrate      = false;
+let celebrateFrames = 0;
 
-const canvas = document.getElementById('c');
-canvas.width  = W;
-canvas.height = H;
-const ctx = canvas.getContext('2d');
-
-// ─── DOTS ────────────────────────────────────────────────────────────────────
-const dots = [];
-let dotsEaten = 0;
-
-function initDots() {
-  dots.length = 0;
-  for (let r = 0; r < ROWS; r++) {
-    for (let c = 0; c < COLS; c++) {
-      if (MAP[r][c] === 0) {
-        dots.push({ r, c, eaten: false, power: false });
-      }
-    }
-  }
-  // Power pellets: one from each quadrant
-  const quadrants = [
-    dots.filter(d => d.r <  ROWS/2 && d.c <  COLS/2),
-    dots.filter(d => d.r <  ROWS/2 && d.c >= COLS/2),
-    dots.filter(d => d.r >= ROWS/2 && d.c <  COLS/2),
-    dots.filter(d => d.r >= ROWS/2 && d.c >= COLS/2),
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+function init() {
+  const sx = Math.floor(COLS / 2);
+  const sy = Math.floor(ROWS / 2);
+  snake = [
+    { x: sx,     y: sy },
+    { x: sx - 1, y: sy },
+    { x: sx - 2, y: sy },
   ];
-  quadrants.forEach(q => {
-    if (q.length) q[Math.floor(Math.random() * q.length)].power = true;
+  dir             = { x: 1, y: 0 };
+  dead            = false;
+  deadFrames      = 0;
+  celebrate       = false;
+  celebrateFrames = 0;
+  collected       = [];
+  score           = 0;
+  document.getElementById('score').textContent  = 0;
+  document.getElementById('length').textContent = snake.length;
+  updateLettersDisplay();
+  placeAllFoods();
+}
+
+// ─── FOOD ─────────────────────────────────────────────────────────────────────
+function cellFree(x, y, excludeIdx = -1) {
+  if (snake.some(s => s.x === x && s.y === y)) return false;
+  if (foods.some((f, i) => i !== excludeIdx && f.x === x && f.y === y)) return false;
+  return true;
+}
+
+function randomFreeCell(excludeIdx = -1) {
+  for (let t = 0; t < 2000; t++) {
+    const x = 1 + Math.floor(Math.random() * (COLS - 2));
+    const y = 1 + Math.floor(Math.random() * (ROWS - 2));
+    if (cellFree(x, y, excludeIdx)) return { x, y };
+  }
+  return { x: 1, y: 1 };
+}
+
+function placeAllFoods() {
+  foods = LETTERS.map((letter, idx) => {
+    const pos = randomFreeCell(idx);
+    return { ...pos, letter, color: FOOD_COLORS[idx], idx, phase: Math.random() * Math.PI * 2 };
   });
 }
 
-// ─── PATHFINDING HELPERS ─────────────────────────────────────────────────────
-const DIRS = [
-  { dx: 0,  dy: -1, name: 'up'    },
-  { dx: 0,  dy:  1, name: 'down'  },
-  { dx: -1, dy:  0, name: 'left'  },
-  { dx:  1, dy:  0, name: 'right' },
-];
-
-function isWalkable(c, r) {
-  if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return false;
-  return MAP[r][c] === 0;
+function respawnFood(idx) {
+  const pos = randomFreeCell(idx);
+  foods[idx] = { ...pos, letter: LETTERS[idx], color: FOOD_COLORS[idx], idx, phase: Math.random() * Math.PI * 2 };
 }
 
-function cellCenter(c, r) {
-  return { x: c * CELL + CELL / 2, y: r * CELL + CELL / 2 };
+// ─── BFS PATHFINDING ─────────────────────────────────────────────────────────
+const BFS_DIRS = [{ x:1,y:0 },{ x:-1,y:0 },{ x:0,y:1 },{ x:0,y:-1 }];
+
+function buildOcc(excludeTail = true) {
+  const occ = Array.from({ length: ROWS }, () => new Uint8Array(COLS));
+  const end  = excludeTail ? snake.length - 1 : snake.length;
+  for (let i = 0; i < end; i++) {
+    const s = snake[i];
+    if (s.y >= 0 && s.y < ROWS && s.x >= 0 && s.x < COLS) occ[s.y][s.x] = 1;
+  }
+  return occ;
 }
 
-// BFS to find next direction toward target cell
-function bfsDir(fromC, fromR, toC, toR, bannedDir) {
-  if (fromC === toC && fromR === toR) return null;
-  const visited = Array.from({ length: ROWS }, () => Array(COLS).fill(false));
-  visited[fromR][fromC] = true;
-  const queue = [{ c: fromC, r: fromR, firstDir: null }];
-  while (queue.length) {
-    const { c, r, firstDir } = queue.shift();
-    for (const d of DIRS) {
-      if (firstDir === null && d.name === bannedDir) continue;
-      const nc = c + d.dx;
-      const nr = r + d.dy;
-      if (!isWalkable(nc, nr) || visited[nr][nc]) continue;
-      visited[nr][nc] = true;
-      const fd = firstDir ?? d;
-      if (nc === toC && nr === toR) return fd;
-      queue.push({ c: nc, r: nr, firstDir: fd });
+function bfsNextStep(target) {
+  const occ  = buildOcc(true);
+  const head = snake[0];
+  if (head.x === target.x && head.y === target.y) return null;
+
+  const vis = Array.from({ length: ROWS }, () => new Uint8Array(COLS));
+  vis[head.y][head.x] = 1;
+  const queue = [];
+
+  for (const d of BFS_DIRS) {
+    const nx = head.x + d.x, ny = head.y + d.y;
+    if (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS) continue;
+    if (occ[ny][nx] || vis[ny][nx]) continue;
+    vis[ny][nx] = 1;
+    if (nx === target.x && ny === target.y) return d;
+    queue.push([nx, ny, d]);
+  }
+
+  let qi = 0;
+  while (qi < queue.length) {
+    const [cx, cy, first] = queue[qi++];
+    for (const d of BFS_DIRS) {
+      const nx = cx + d.x, ny = cy + d.y;
+      if (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS) continue;
+      if (occ[ny][nx] || vis[ny][nx]) continue;
+      vis[ny][nx] = 1;
+      if (nx === target.x && ny === target.y) return first;
+      queue.push([nx, ny, first]);
     }
   }
   return null;
 }
 
-// ─── CREATURE CLASS ───────────────────────────────────────────────────────────
-const LETTERS  = ['m','u','t','o','p','r','a','k'];
-const CREATURE_COLORS = [
-  '#FF4444','#44AAFF','#FF88AA','#FFB344',
-  '#44FF88','#FF44FF','#44FFFF','#FFFFFF',
-];
-
-// Spawn positions: pick 8 walkable cells, 2 from each quadrant
-function buildSpawns() {
-  const q = [[], [], [], []];
-  for (let r = 1; r < ROWS - 1; r++) {
-    for (let c = 1; c < COLS - 1; c++) {
-      if (MAP[r][c] === 0) {
-        const qi = (r < ROWS / 2 ? 0 : 2) + (c < COLS / 2 ? 0 : 1);
-        q[qi].push([r, c]);
-      }
-    }
-  }
-  const spawns = [];
-  q.forEach(cells => {
-    for (let i = cells.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [cells[i], cells[j]] = [cells[j], cells[i]];
-    }
-    spawns.push(cells[0], cells[1] ?? cells[0]);
+function safeMoves() {
+  const occ  = buildOcc(true);
+  const head = snake[0];
+  return BFS_DIRS.filter(d => {
+    const nx = head.x + d.x, ny = head.y + d.y;
+    if (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS) return false;
+    return !occ[ny][nx];
   });
-  return spawns;
 }
-const SPAWNS = buildSpawns();
 
-class Creature {
-  constructor(idx) {
-    this.idx    = idx;
-    this.letter = LETTERS[idx];
-    this.color  = CREATURE_COLORS[idx];
-    this.size   = CELL * 0.72;
-
-    // Behavior personality
-    this.personality = ['wander','chase','flee','patrol'][idx % 4];
-    this.laps   = 0;
-
-    this.reset();
-  }
-
-  reset() {
-    const [r, c] = SPAWNS[this.idx % SPAWNS.length];
-    const cc = cellCenter(c, r);
-    this.x   = cc.x;
-    this.y   = cc.y;
-    this.col = c;
-    this.row = r;
-    this.targetCol = c;
-    this.targetRow = r;
-    this.dir = DIRS[Math.floor(Math.random() * 4)];
-    this.scared    = false;
-    this.scaredTimer = 0;
-    this.pickNewTarget();
-  }
-
-  pickNewTarget() {
-    // Pick a random reachable open cell
-    let attempts = 0;
-    while (attempts++ < 200) {
-      const rc = Math.floor(Math.random() * ROWS);
-      const cc = Math.floor(Math.random() * COLS);
-      if (isWalkable(cc, rc) && (rc !== this.row || cc !== this.col)) {
-        this.targetCol = cc;
-        this.targetRow = rc;
-        return;
-      }
+function floodCount(sx, sy, occ) {
+  if (occ[sy]?.[sx]) return 0;
+  const vis = Array.from({ length: ROWS }, () => new Uint8Array(COLS));
+  vis[sy][sx] = 1;
+  const q = [[sx, sy]];
+  let count = 0, qi = 0;
+  while (qi < q.length) {
+    const [cx, cy] = q[qi++];
+    count++;
+    for (const d of BFS_DIRS) {
+      const nx = cx + d.x, ny = cy + d.y;
+      if (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS) continue;
+      if (occ[ny][nx] || vis[ny][nx]) continue;
+      vis[ny][nx] = 1;
+      q.push([nx, ny]);
     }
   }
+  return count;
+}
 
-  // Opposite direction name
-  static opposite(name) {
-    return { up:'down', down:'up', left:'right', right:'left' }[name];
+// ─── AI ──────────────────────────────────────────────────────────────────────
+function aiMove() {
+  const head   = snake[0];
+  const sorted = [...foods].sort((a, b) =>
+    (Math.abs(a.x - head.x) + Math.abs(a.y - head.y)) -
+    (Math.abs(b.x - head.x) + Math.abs(b.y - head.y))
+  );
+
+  for (const food of sorted) {
+    const step = bfsNextStep(food);
+    if (step) { dir = step; return; }
   }
 
-  chooseDir() {
-    // Available directions (no reversing unless forced)
-    const available = DIRS.filter(d => {
-      const nc = this.col + d.dx;
-      const nr = this.row + d.dy;
-      return isWalkable(nc, nr);
-    });
+  const moves = safeMoves();
+  if (!moves.length) return;
+  if (moves.length === 1) { dir = moves[0]; return; }
 
-    if (available.length === 0) return this.dir;
-
-    const forward = available.filter(d => d.name !== Creature.opposite(this.dir.name));
-    const options = forward.length > 0 ? forward : available;
-
-    // Scared: run away from target (farthest direction)
-    if (this.scared) {
-      // Move away from target
-      const tc = cellCenter(this.targetCol, this.targetRow);
-      let best = null, bestDist = -Infinity;
-      options.forEach(d => {
-        const nc = this.col + d.dx;
-        const nr = this.row + d.dy;
-        const cp = cellCenter(nc, nr);
-        const dist = Math.hypot(cp.x - tc.x, cp.y - tc.y);
-        if (dist > bestDist) { bestDist = dist; best = d; }
-      });
-      return best ?? options[0];
-    }
-
-    // BFS toward target
-    const bfs = bfsDir(this.col, this.row, this.targetCol, this.targetRow,
-                       Creature.opposite(this.dir.name));
-    if (bfs) {
-      const match = options.find(d => d.name === bfs.name);
-      if (match) return match;
-    }
-
-    // Fallback: random from available (avoid reverse)
-    return options[Math.floor(Math.random() * options.length)];
+  const occ = buildOcc(true);
+  let best = moves[0], bestSpace = -1;
+  for (const d of moves) {
+    const space = floodCount(head.x + d.x, head.y + d.y, occ);
+    if (space > bestSpace) { bestSpace = space; best = d; }
   }
+  dir = best;
+}
 
-  update(others) {
-    // Move toward next cell center
-    const tgt = cellCenter(this.col + this.dir.dx, this.row + this.dir.dy);
+// ─── GAME TICK ────────────────────────────────────────────────────────────────
+function tick() {
+  if (dead || celebrate) return;
+  aiMove();
 
-    // Check if next cell is walkable; if not, we must be at current center
-    const nextC = this.col + this.dir.dx;
-    const nextR = this.row + this.dir.dy;
+  const head = snake[0];
+  const nx   = head.x + dir.x;
+  const ny   = head.y + dir.y;
 
-    if (!isWalkable(nextC, nextR)) {
-      // Snap to center and replan
-      const cc = cellCenter(this.col, this.row);
-      this.x = cc.x; this.y = cc.y;
-      this.dir = this.chooseDir();
-      return;
+  if (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS)  { die(); return; }
+  if (snake.some(s => s.x === nx && s.y === ny))      { die(); return; }
+
+  snake.unshift({ x: nx, y: ny });
+
+  const fi = foods.findIndex(f => f.x === nx && f.y === ny);
+  if (fi !== -1) {
+    score += 10 + Math.floor(snake.length / 5);
+    if (score > high) { high = score; document.getElementById('high').textContent = high; }
+    collected.push(foods[fi].letter);
+    document.getElementById('score').textContent  = score;
+    document.getElementById('length').textContent = snake.length;
+    updateLettersDisplay();
+
+    if (LETTERS.every(l => collected.includes(l))) {
+      celebrate = true; celebrateFrames = 0; return;
     }
-
-    const dx = tgt.x - this.x;
-    const dy = tgt.y - this.y;
-    const dist = Math.hypot(dx, dy);
-
-    if (dist <= SPEED) {
-      // Arrived at next cell
-      this.x = tgt.x;
-      this.y = tgt.y;
-      this.col = nextC;
-      this.row = nextR;
-
-      // Eat dot
-      const dot = dots.find(d => d.r === this.row && d.c === this.col && !d.eaten);
-      if (dot) {
-        dot.eaten = true;
-        dotsEaten++;
-        document.getElementById('dots').textContent = dotsEaten;
-        if (dot.power) {
-          // Scare all other creatures
-          others.forEach(o => {
-            if (o !== this) { o.scared = true; o.scaredTimer = 300; }
-          });
-        }
-      }
-
-      // Arrived at target?
-      if (this.col === this.targetCol && this.row === this.targetRow) {
-        this.laps++;
-        document.getElementById('laps').textContent =
-          Math.max(...creatures.map(c => c.laps));
-        this.pickNewTarget();
-        // Sometimes change personality target
-        if (Math.random() < 0.3) this.scared = false;
-      }
-
-      this.dir = this.chooseDir();
-    } else {
-      this.x += (dx / dist) * SPEED;
-      this.y += (dy / dist) * SPEED;
-    }
-
-    // Scared timer
-    if (this.scared) {
-      this.scaredTimer--;
-      if (this.scaredTimer <= 0) this.scared = false;
-    }
+    respawnFood(fi);
+  } else {
+    snake.pop();
   }
+  document.getElementById('length').textContent = snake.length;
+}
 
-  draw() {
-    const fs = this.size;
-    ctx.save();
-    ctx.translate(this.x, this.y);
+function die() {
+  dead = true; deadFrames = 0;
+  if (score > high) { high = score; document.getElementById('high').textContent = high; }
+}
 
-    // Glow
-    ctx.shadowBlur  = this.scared ? 16 : 10;
-    ctx.shadowColor = this.scared ? '#4444ff' : this.color;
+// ─── LETTERS DISPLAY ─────────────────────────────────────────────────────────
+function updateLettersDisplay() {
+  const el = document.getElementById('letters-display');
+  el.innerHTML = LETTERS.map((l, i) => {
+    const got  = collected.includes(l);
+    const col  = got ? FOOD_COLORS[i] : '#1e3d1e';
+    const glow = got ? `0 0 10px ${FOOD_COLORS[i]}, 0 0 20px ${FOOD_COLORS[i]}66` : 'none';
+    return `<span style="color:${col};text-shadow:${glow};transition:color .3s,text-shadow .3s">${l}</span>`;
+  }).join('<span style="color:#1e3d1e">·</span>');
+}
 
-    // Body circle
+// ─── DRAWING ─────────────────────────────────────────────────────────────────
+function drawGrid() {
+  ctx.fillStyle = C_BG;
+  ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = C_GRID;
+  ctx.lineWidth   = 0.5;
+  for (let x = 0; x <= COLS; x++) {
+    ctx.beginPath(); ctx.moveTo(x * CELL, 0); ctx.lineTo(x * CELL, H); ctx.stroke();
+  }
+  for (let y = 0; y <= ROWS; y++) {
+    ctx.beginPath(); ctx.moveTo(0, y * CELL); ctx.lineTo(W, y * CELL); ctx.stroke();
+  }
+}
+
+function drawFoods(now) {
+  const fontSize = Math.max(9, Math.round(CELL * 0.62));
+  foods.forEach(food => {
+    const cx = food.x * CELL + CELL / 2;
+    const cy = food.y * CELL + CELL / 2;
+    const pulse = 0.82 + 0.18 * Math.sin(now / 350 + food.phase);
+    const r = CELL * 0.38 * pulse;
+
     ctx.beginPath();
-    ctx.arc(0, 0, fs * 0.46, 0, Math.PI * 2);
-    ctx.fillStyle = this.scared
-      ? `rgba(60,60,220,${0.5 + 0.5 * Math.sin(Date.now() / 80)})`
-      : this.color + '33';
+    ctx.arc(cx, cy, r + CELL * 0.2, 0, Math.PI * 2);
+    ctx.fillStyle   = food.color + '15';
+    ctx.shadowBlur  = 14;
+    ctx.shadowColor = food.color;
     ctx.fill();
 
-    // Border
-    ctx.strokeStyle = this.scared ? '#8888ff' : this.color;
-    ctx.lineWidth   = 1.5;
-    ctx.stroke();
-
-    // Letter
-    ctx.shadowBlur  = 0;
-    ctx.font        = `bold ${Math.round(fs * 0.55)}px 'Courier New', monospace`;
-    ctx.textAlign   = 'center';
+    ctx.shadowBlur   = 10;
+    ctx.shadowColor  = food.color;
+    ctx.font         = `bold ${fontSize}px 'Courier New', monospace`;
+    ctx.textAlign    = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillStyle   = this.scared ? '#aaaaff' : this.color;
-    ctx.fillText(this.letter.toUpperCase(), 0, 1);
-
-    ctx.restore();
-  }
+    ctx.fillStyle    = food.color;
+    ctx.fillText(food.letter, cx, cy + Math.round(fontSize * 0.07));
+    ctx.shadowBlur = 0;
+  });
 }
 
-// ─── INIT ─────────────────────────────────────────────────────────────────────
-initDots();
-const creatures = LETTERS.map((_, i) => new Creature(i));
+function drawSnake(now) {
+  const pad = Math.max(1, Math.round(CELL * 0.13));
+  const rr  = Math.max(2, Math.round(CELL * 0.2));
+  const es  = Math.max(1, Math.round(CELL * 0.14));
 
-// ─── DRAW MAZE ────────────────────────────────────────────────────────────────
-function drawMaze() {
-  for (let r = 0; r < ROWS; r++) {
-    for (let c = 0; c < COLS; c++) {
-      const x = c * CELL;
-      const y = r * CELL;
-      if (MAP[r][c] === 1) {
-        ctx.fillStyle = THEME.wall;
-        ctx.fillRect(x, y, CELL, CELL);
-        ctx.strokeStyle = THEME.hi;
-        ctx.lineWidth = 1;
-        ctx.strokeRect(x + 1, y + 1, CELL - 2, CELL - 2);
-      }
-    }
-  }
-}
+  snake.forEach((seg, i) => {
+    const x = seg.x * CELL;
+    const y = seg.y * CELL;
 
-function drawDots() {
-  dots.forEach(d => {
-    if (d.eaten) return;
-    const cc = cellCenter(d.c, d.r);
-    if (d.power) {
-      // Power pellet
-      const pulse = 0.6 + 0.4 * Math.sin(Date.now() / 200);
-      ctx.beginPath();
-      ctx.arc(cc.x, cc.y, 5 * pulse, 0, Math.PI * 2);
-      ctx.fillStyle = '#FFD700';
-      ctx.shadowBlur = 12;
-      ctx.shadowColor = '#FFD700';
-      ctx.fill();
-      ctx.shadowBlur = 0;
+    let fill, glow;
+    if (dead) {
+      fill = i === 0 ? C_DEAD : C_DEAD_B;
+      glow = C_DEAD;
+    } else if (celebrate) {
+      const hue = (now / 4 + i * 15) % 360;
+      fill = `hsl(${hue},100%,55%)`;
+      glow = fill;
     } else {
-      ctx.beginPath();
-      ctx.arc(cc.x, cc.y, 2, 0, Math.PI * 2);
-      ctx.fillStyle = '#FFD700aa';
-      ctx.fill();
+      fill = i === 0 ? C_HEAD : (i % 2 === 0 ? C_BODY_A : C_BODY_B);
+      glow = i === 0 ? C_HEAD : C_BODY_A;
+    }
+
+    ctx.fillStyle   = fill;
+    ctx.shadowBlur  = i === 0 ? Math.round(CELL * 0.9) : Math.round(CELL * 0.3);
+    ctx.shadowColor = glow;
+    ctx.beginPath();
+    ctx.roundRect(x + pad, y + pad, CELL - pad * 2, CELL - pad * 2, rr);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Eyes on head
+    if (i === 0 && !dead) {
+      ctx.fillStyle = C_BG;
+      const fa = Math.round(CELL * 0.65); // forward offset
+      const si = Math.round(CELL * 0.22); // side near
+      const so = Math.round(CELL * 0.62); // side far
+      const em = Math.round(CELL * 0.18); // eye inset from leading edge
+      let ex1, ey1, ex2, ey2;
+      if      (dir.x ===  1) { ex1=x+fa; ey1=y+si; ex2=x+fa;  ey2=y+so; }
+      else if (dir.x === -1) { ex1=x+em; ey1=y+si; ex2=x+em;  ey2=y+so; }
+      else if (dir.y ===  1) { ex1=x+si; ey1=y+fa; ex2=x+so;  ey2=y+fa; }
+      else                   { ex1=x+si; ey1=y+em; ex2=x+so;  ey2=y+em; }
+      ctx.fillRect(ex1, ey1, es, es);
+      ctx.fillRect(ex2, ey2, es, es);
     }
   });
 }
 
-// ─── GAME LOOP ────────────────────────────────────────────────────────────────
-let lastReset = 0;
+function drawOverlay(now) {
+  const headSize = Math.round(Math.min(W, H) * 0.07);
+  const subSize  = Math.round(headSize * 0.5);
 
-function loop() {
-  // Clear
-  ctx.fillStyle = '#000';
-  ctx.fillRect(0, 0, W, H);
+  if (dead) {
+    ctx.fillStyle = 'rgba(0,0,0,0.65)';
+    ctx.fillRect(0, 0, W, H);
 
-  drawMaze();
-  drawDots();
+    ctx.font        = `bold ${headSize}px Courier New`;
+    ctx.textAlign   = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle   = C_DEAD;
+    ctx.shadowBlur  = headSize;
+    ctx.shadowColor = C_DEAD;
+    ctx.fillText('GAME OVER', W / 2, H / 2 - headSize * 0.7);
 
-  // Update & draw creatures
-  creatures.forEach(c => c.update(creatures));
-  creatures.forEach(c => c.draw());
+    ctx.font        = `${subSize}px Courier New`;
+    ctx.fillStyle   = '#4bfc68';
+    ctx.shadowColor = '#4bfc68';
+    ctx.shadowBlur  = subSize;
+    ctx.fillText(`SCORE: ${score}`, W / 2, H / 2 + subSize * 0.3);
+    ctx.fillText('RESTARTING...', W / 2, H / 2 + subSize * 1.8);
+    ctx.shadowBlur = 0;
+  }
 
-  // If all dots eaten, reinit after short delay
-  if (dots.every(d => d.eaten)) {
-    const now = Date.now();
-    if (now - lastReset > 1500) {
-      lastReset = now;
-      initDots();
+  if (celebrate) {
+    const alpha = 0.45 + 0.45 * Math.sin(now / 80);
+    ctx.strokeStyle = `rgba(255,255,100,${alpha})`;
+    ctx.lineWidth   = Math.max(2, CELL * 0.15);
+    ctx.strokeRect(1, 1, W - 2, H - 2);
+
+    ctx.font        = `bold ${headSize}px Courier New`;
+    ctx.textAlign   = 'center';
+    ctx.textBaseline = 'middle';
+    const hue = (now / 3) % 360;
+    ctx.fillStyle   = `hsl(${hue},100%,65%)`;
+    ctx.shadowBlur  = headSize;
+    ctx.shadowColor = `hsl(${hue},100%,65%)`;
+    ctx.fillText('MUTOPRAK!', W / 2, H / 2 - headSize * 0.7);
+
+    ctx.font        = `${subSize}px Courier New`;
+    ctx.fillStyle   = '#4bfc68';
+    ctx.shadowColor = '#4bfc68';
+    ctx.shadowBlur  = subSize;
+    ctx.fillText('LETTERS COLLECTED!', W / 2, H / 2 + subSize * 0.3);
+    ctx.shadowBlur = 0;
+  }
+}
+
+// ─── MAIN LOOP ────────────────────────────────────────────────────────────────
+let lastTick = 0;
+
+function loop(now) {
+  drawGrid();
+
+  if (now - lastTick >= TICK_MS) {
+    lastTick = now;
+    if (dead) {
+      deadFrames++;
+      if (deadFrames >= 20) init();
+    } else if (celebrate) {
+      celebrateFrames++;
+      if (celebrateFrames >= 25) {
+        celebrate = false;
+        collected = [];
+        updateLettersDisplay();
+        placeAllFoods();
+      }
+    } else {
+      tick();
     }
   }
+
+  drawFoods(now);
+  drawSnake(now);
+  drawOverlay(now);
 
   requestAnimationFrame(loop);
 }
 
-loop();
+// ─── RESIZE ───────────────────────────────────────────────────────────────────
+function onResize() {
+  applySize();
+}
+
+const ro = new ResizeObserver(onResize);
+ro.observe(document.getElementById('canvas-wrap'));
+
+// ─── START ────────────────────────────────────────────────────────────────────
+applySize();
+init();
+updateLettersDisplay();
+requestAnimationFrame(loop);
 </script>
 </body>
 </html>
